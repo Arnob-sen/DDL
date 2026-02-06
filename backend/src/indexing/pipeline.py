@@ -4,14 +4,15 @@ from typing import List
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_qdrant import Qdrant
-from qdrant_client import QdrantClient
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient, models
 
 from ..storage.db import storage
 
 class IndexingPipeline:
     def __init__(self):
-        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        # This specific preview key requires the 'models/' prefix and has 3072 dimensions
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=100,
@@ -34,12 +35,27 @@ class IndexingPipeline:
         # 4. Store in Qdrant
         qdrant_client = storage.get_qdrant()
         if qdrant_client:
-            # Note: In a real app we'd handle collection creation/existence
-            # Using LangChain's Qdrant wrapper
-            vector_db = Qdrant(
+            # Ensure collection exists with correct dimensions (3072 for this preview model)
+            target_dim = 3072 
+            try:
+                info = qdrant_client.get_collection(collection_name)
+                current_dim = info.config.params.vectors.size
+                if current_dim != target_dim:
+                    print(f"Dimension mismatch ({current_dim} vs {target_dim}). Recreating collection...")
+                    qdrant_client.delete_collection(collection_name)
+            except Exception:
+                pass # Collection doesn't exist
+
+            if not qdrant_client.collection_exists(collection_name):
+                qdrant_client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=models.VectorParams(size=target_dim, distance=models.Distance.COSINE),
+                )
+
+            vector_db = QdrantVectorStore(
                 client=qdrant_client,
                 collection_name=collection_name,
-                embeddings=self.embeddings
+                embedding=self.embeddings
             )
             vector_db.add_documents(chunks)
             print(f"Indexed {len(chunks)} chunks from {doc_name} into {collection_name}")

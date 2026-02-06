@@ -56,35 +56,56 @@ async def index_document_async_task(job_id: str, file_path: str, doc_name: str):
     except Exception as e:
         await job_manager.update_job(job_id, status=JobStatus.FAILED, error=str(e))
 
-async def create_project_async_task(job_id: str, name: str, questionnaire_path: str, scope: str):
+async def create_project_async_task(job_id: str, name: str, questionnaire_path: str, scope: str, project_id: Optional[str] = None):
     try:
-        await job_manager.update_job(job_id, status=JobStatus.RUNNING, message="Parsing questionnaire...")
-        
-        # 1. Create Project Entry
-        project = Project(name=name, questionnaire_filename=os.path.basename(questionnaire_path), document_scope=scope)
         db = storage.get_db()
-        await db.projects.insert_one(project.dict())
         
-        # 2. Parse Questions
-        questions = questionnaire_parser.parse(questionnaire_path, project.id)
-        if questions:
-            await db.questions.insert_many([q.dict() for q in questions])
+        # 1. Create or Get Project Entry
+        if not project_id:
+            project = Project(name=name, questionnaire_filename=os.path.basename(questionnaire_path), document_scope=scope)
+            await db.projects.insert_one(project.dict())
+            project_id = project.id
+            
+            # 2. Parse Questions (Only if new project)
+            await job_manager.update_job(job_id, status=JobStatus.RUNNING, message="Parsing questionnaire...")
+            questions = questionnaire_parser.parse(questionnaire_path, project_id)
+            if questions:
+                await db.questions.insert_many([q.dict() for q in questions])
+        else:
+            await job_manager.update_job(job_id, status=JobStatus.RUNNING, message="Resuming project generation...")
+
+        # 3. Load Questions
+        questions = await db.questions.find({"project_id": project_id}).to_list(1000)
         
-        await job_manager.update_job(job_id, progress=0.5, message=f"Parsed {len(questions)} questions. Starting generation...")
-        
-        # 3. Trigger Answer Generation
+        # 4. Trigger Answer Generation (Skips existing)
         for i, question in enumerate(questions):
+            # Check if answer already exists
+            existing_answer = await db.answers.find_one({"question_id": question["id"]})
+            if existing_answer:
+                continue
+
             await job_manager.update_job(job_id, progress=0.5 + (0.5 * (i/len(questions))), message=f"Generating answer {i+1}/{len(questions)}...")
-            answer = await generation_service.generate_answer(project.id, question.id, question.text)
+            answer = await generation_service.generate_answer(project_id, question["id"], question["text"])
             await db.answers.insert_one(answer.dict())
             
-        await db.projects.update_one({"id": project.id}, {"$set": {"status": ProjectStatus.COMPLETED, "updated_at": datetime.utcnow()}})
-        await job_manager.update_job(job_id, status=JobStatus.COMPLETED, message="Project created and answers generated.", result={"project_id": project.id})
+        await db.projects.update_one({"id": project_id}, {"$set": {"status": ProjectStatus.COMPLETED, "updated_at": datetime.utcnow()}})
+        await job_manager.update_job(job_id, status=JobStatus.COMPLETED, message="Project processing complete.", result={"project_id": project_id})
         
     except Exception as e:
         await job_manager.update_job(job_id, status=JobStatus.FAILED, error=str(e))
 
 # --- Endpoints ---
+
+@app.post("/resume-project-generation/{project_id}")
+async def resume_project_generation(project_id: str, background_tasks: BackgroundTasks):
+    db = storage.get_db()
+    project = await db.projects.find_one({"id": project_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    job_id = await job_manager.create_job(RequestStatusType.PROJECT_CREATION, message="Resuming generation...")
+    background_tasks.add_task(create_project_async_task, job_id, project["name"], "", project["document_scope"], project_id)
+    return {"job_id": job_id, "status": JobStatus.PENDING}
 
 @app.post("/index-document-async")
 async def index_document_async(background_tasks: BackgroundTasks, payload: dict):

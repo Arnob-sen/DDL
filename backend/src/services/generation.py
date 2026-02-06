@@ -1,7 +1,9 @@
 import os
 from typing import List, Tuple
+import asyncio
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_qdrant import Qdrant
+from langchain_qdrant import QdrantVectorStore
 from langchain_core.prompts import ChatPromptTemplate
 from qdrant_client import QdrantClient
 
@@ -10,8 +12,9 @@ from ..models.models import Answer, Citation, AnswerStatus
 
 class GenerationService:
     def __init__(self):
-        self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
-        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        # This preview key requires models/gemini-embedding-001 (3072 dim) and models/gemini-3-flash-preview
+        self.llm = ChatGoogleGenerativeAI(model="models/gemini-3-flash-preview")
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
         
         self.prompt_template = ChatPromptTemplate.from_template("""
         You are a Due Diligence expert. Answer the following question based ONLY on the provided context.
@@ -28,15 +31,21 @@ class GenerationService:
         Citations: [List of specific snippets used]
         """)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        stop=stop_after_attempt(5),
+        retry=retry_if_exception_type(Exception), # Standard LangChain/Google errors
+        reraise=True
+    )
     async def generate_answer(self, project_id: str, question_id: str, question_text: str, collection_name: str = "ALL_DOCS") -> Answer:
         qdrant_client = storage.get_qdrant()
         if not qdrant_client:
             raise Exception("Qdrant client not initialized")
 
-        vector_db = Qdrant(
+        vector_db = QdrantVectorStore(
             client=qdrant_client,
             collection_name=collection_name,
-            embeddings=self.embeddings
+            embedding=self.embeddings
         )
 
         # 1. Retrieve relevant chunks
@@ -44,14 +53,19 @@ class GenerationService:
         
         context_text = "\n---\n".join([d[0].page_content for d in docs])
         
-        # 2. Invoke LLM
-        response = await self.llm.ainvoke({
+        # 2. Invoke LLM using the prompt template
+        chain = self.prompt_template | self.llm
+        response = await chain.ainvoke({
             "question": question_text,
             "context": context_text
         })
         
-        # 3. Parse LLM response (Basic parsing for skeleton)
+        # 3. Parse LLM response (Handling Gemini 3 List-style content)
         content = response.content
+        if isinstance(content, list):
+            # Extract text from the first message block
+            content = " ".join([block.get("text", "") for block in content if isinstance(block, dict)])
+        
         lines = content.split("\n")
         answer_text = ""
         confidence = 0.5

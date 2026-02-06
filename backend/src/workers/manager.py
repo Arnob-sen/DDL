@@ -13,13 +13,18 @@ class JobManager:
             message=message
         )
         db = storage.get_db()
-        if db:
+        
+        # FIX 1: Change "if db:" to "if db is not None:"
+        if db is not None:
             await db.jobs.insert_one(status.dict())
         return job_id
 
     async def update_job(self, job_id: str, status: Optional[JobStatus] = None, progress: Optional[float] = None, message: Optional[str] = None, error: Optional[str] = None, result: Optional[Any] = None):
         db = storage.get_db()
-        if not db: return
+        
+        # FIX 2: Change "if not db:" to "if db is None:"
+        if db is None: 
+            return
         
         update_data = {"updated_at": datetime.utcnow()}
         if status: update_data["status"] = status
@@ -32,7 +37,11 @@ class JobManager:
 
     async def get_job(self, job_id: str) -> Optional[Dict]:
         db = storage.get_db()
-        if not db: return None
+        
+        # FIX 3: Change "if not db:" to "if db is None:"
+        if db is None: 
+            return None
+            
         return await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
 
 job_manager = JobManager()
