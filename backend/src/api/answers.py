@@ -1,16 +1,33 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from typing import Optional, List
 from datetime import datetime
 from ..storage.db import storage
 from ..workers.manager import job_manager
 from ..workers.tasks import generate_single_answer_task, generate_answers_for_project
 from ..models.models import RequestStatusType, JobStatus, AnswerStatus
+from pydantic import BaseModel
 
 router = APIRouter(tags=["answers"])
 
+class GenerateAnswerPayload(BaseModel):
+    project_id: str
+    question_id: str
+
+class GenerateAllPayload(BaseModel):
+    project_id: str
+
+class UpdateAnswerPayload(BaseModel):
+    answer_id: Optional[str] = None
+    project_id: Optional[str] = None
+    question_id: Optional[str] = None
+    answer_text: Optional[str] = None
+    answer: Optional[str] = None # For compatibility
+    status: Optional[str] = None
+
 @router.post("/generate-single-answer")
-async def generate_single_answer(background_tasks: BackgroundTasks, payload: dict):
-    project_id = payload.get("project_id")
-    question_id = payload.get("question_id")
+async def generate_single_answer(background_tasks: BackgroundTasks, payload: GenerateAnswerPayload):
+    project_id = payload.project_id
+    question_id = payload.question_id
     
     if not project_id or not question_id:
         raise HTTPException(status_code=400, detail="project_id and question_id are required")
@@ -36,8 +53,8 @@ async def generate_single_answer(background_tasks: BackgroundTasks, payload: dic
     return {"job_id": job_id, "status": JobStatus.RUNNING}
 
 @router.post("/generate-all-answers")
-async def generate_all_answers(background_tasks: BackgroundTasks, payload: dict):
-    project_id = payload.get("project_id")
+async def generate_all_answers(background_tasks: BackgroundTasks, payload: GenerateAllPayload):
+    project_id = payload.project_id
     if not project_id:
         raise HTTPException(status_code=400, detail="project_id is required")
         
@@ -51,10 +68,11 @@ async def generate_all_answers(background_tasks: BackgroundTasks, payload: dict)
     return {"job_id": job_id, "status": JobStatus.RUNNING}
 
 @router.post("/update-answer")
-async def update_answer(payload: dict):
-    answer_id = payload.get("answer_id")
-    project_id = payload.get("project_id")
-    question_id = payload.get("question_id")
+async def update_answer(payload: UpdateAnswerPayload):
+    print(f"Update Answer Request: {payload.dict()}")
+    answer_id = payload.answer_id
+    project_id = payload.project_id
+    question_id = payload.question_id
     
     db = storage.get_db()
     
@@ -73,15 +91,18 @@ async def update_answer(payload: dict):
     }
     
     # Handle both payload keys for flexibility
-    new_text = payload.get("answer_text") or payload.get("answer")
+    new_text = payload.answer_text or payload.answer
     
     if new_text:
         updates["answer_text"] = new_text
         updates["manual_overridden_text"] = new_text
         updates["status"] = AnswerStatus.MANUAL_UPDATED
         
-    if "status" in payload:
-        updates["status"] = AnswerStatus(payload["status"])
+    if payload.status:
+        try:
+            updates["status"] = AnswerStatus(payload.status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {payload.status}")
         
     await db.answers.update_one({"_id": answer["_id"]}, {"$set": updates})
     return {"message": "Answer updated successfully"}

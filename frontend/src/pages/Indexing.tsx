@@ -16,6 +16,9 @@ const Indexing: React.FC = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [availableFiles, setAvailableFiles] = useState<
+    { name: string; path: string; size: number }[]
+  >([]);
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -29,7 +32,17 @@ const Indexing: React.FC = () => {
       }
     };
 
+    const fetchAvailableFiles = async () => {
+      try {
+        const response = await projectApi.listFiles();
+        setAvailableFiles(response.data);
+      } catch (error) {
+        console.error("Failed to fetch available files:", error);
+      }
+    };
+
     fetchDocuments();
+    fetchAvailableFiles();
   }, []);
 
   const handleIndexDocument = async (filePath: string, docName: string) => {
@@ -40,10 +53,12 @@ const Indexing: React.FC = () => {
         doc_name: docName,
       });
       console.log("Indexing started:", response.data);
-      // In a real app, we'd poll or wait for websocket update
-      // For now, just refresh list
-      const updatedDocs = await projectApi.listDocuments();
-      setDocuments(updatedDocs.data);
+
+      // Refresh list after success
+      setTimeout(async () => {
+        const updatedDocs = await projectApi.listDocuments();
+        setDocuments(updatedDocs.data);
+      }, 2000);
     } catch (error) {
       console.error("Indexing failed:", error);
     } finally {
@@ -63,25 +78,41 @@ const Indexing: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Upload Zone */}
         <div className="lg:col-span-1 space-y-6">
-          <div
-            onClick={() =>
-              handleIndexDocument("mock/path/doc.pdf", "Interactive Doc")
-            }
-            className={`p-8 border-2 border-dashed border-slate-700 bg-slate-900/30 rounded-2xl flex flex-col items-center justify-center text-center group hover:border-primary-500/50 transition-all cursor-pointer ${uploading ? "opacity-50 pointer-events-none" : ""}`}
-          >
-            <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              {uploading ? (
-                <Activity className="w-8 h-8 text-primary-400 animate-spin" />
+          <div className="p-6 bg-slate-900/50 border border-slate-800 rounded-2xl">
+            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <Upload className="w-5 h-5 text-primary-400" />
+              Available Files
+            </h3>
+            <div className="space-y-3">
+              {availableFiles.length > 0 ? (
+                availableFiles.map((file, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 bg-slate-950/50 border border-slate-800 rounded-lg flex items-center justify-between group"
+                  >
+                    <div className="overflow-hidden">
+                      <p className="text-sm font-medium text-slate-200 truncate">
+                        {file.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleIndexDocument(file.path, file.name)}
+                      disabled={uploading}
+                      className="bg-primary-500/10 hover:bg-primary-500/20 text-primary-400 p-2 rounded-lg transition-all disabled:opacity-50"
+                    >
+                      <Upload className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
               ) : (
-                <Upload className="w-8 h-8 text-primary-400" />
+                <p className="text-xs text-slate-500 italic">
+                  No PDF files found in data directory.
+                </p>
               )}
             </div>
-            <h3 className="font-bold text-lg">Upload New Document</h3>
-            <p className="text-slate-500 text-sm mt-2">
-              {uploading
-                ? "Indexing in progress..."
-                : "Drag and drop PDF files here or click to browse"}
-            </p>
           </div>
 
           <div className="p-6 bg-slate-900/50 border border-slate-800 rounded-2xl">
@@ -137,7 +168,7 @@ const Indexing: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {documents.length > 0 ? (
-                    documents.map((doc: any, idx) => (
+                    documents.map((doc: Document, idx) => (
                       <tr
                         key={idx}
                         className="hover:bg-slate-800/30 transition-colors"

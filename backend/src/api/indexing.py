@@ -1,4 +1,4 @@
-import os
+import os, glob
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from ..workers.manager import job_manager
 from ..workers.tasks import index_document_async_task
@@ -21,7 +21,18 @@ async def index_document_async(background_tasks: BackgroundTasks, payload: dict)
 async def list_documents():
     from ..storage.db import storage
     db = storage.get_db()
+    # Return documents collection
     docs = await db.documents.find({}, {"_id": 0}).to_list(100)
     return docs
+
+@router.get("/list-files")
+async def list_files():
+    # List PDFs in the data directory
+    data_dir = "/media/arnob/New Volume/Dev/DDL/data"
+    if not os.path.exists(data_dir):
+        return []
+    
+    files = glob.glob(os.path.join(data_dir, "*.pdf"))
+    return [{"name": os.path.basename(f), "path": f, "size": os.path.getsize(f)} for f in files]
 
 # Supporting legacy root-level endpoint if needed, but we'll mount it in main.py

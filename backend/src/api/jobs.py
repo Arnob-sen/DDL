@@ -9,3 +9,9 @@ async def get_request_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+@router.get("/jobs/active")
+async def list_active_jobs():
+    from ..storage.db import storage
+    db = storage.get_db()
+    jobs = await db.jobs.find({"status": {"$in": ["RUNNING", "PENDING"]}}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return jobs

@@ -48,15 +48,24 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
     questionId: string,
     status: "CONFIRMED" | "REJECTED",
   ) => {
+    if (!projectData) return;
+
     setSubmitting(true);
     try {
       console.log(`Updating question ${questionId} to ${status}`);
-      if (projectData) {
-        const updatedQuestions = projectData.questions.map((q) =>
-          q.id === questionId ? { ...q, status } : q,
-        );
-        setProjectData({ ...projectData, questions: updatedQuestions });
-      }
+
+      // Update backend
+      await projectApi.updateAnswer({
+        project_id: projectId,
+        question_id: questionId,
+        status: status,
+      });
+
+      // Update local state
+      const updatedQuestions = projectData.questions.map((q) =>
+        q.id === questionId ? { ...q, status } : q,
+      );
+      setProjectData({ ...projectData, questions: updatedQuestions });
     } catch (error) {
       console.error("Failed to update answer status:", error);
     } finally {
@@ -122,6 +131,21 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
           </div>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={async () => {
+              if (
+                confirm(
+                  "This will clear all current AI answers and regenerate them using the latest corpus. Any manual confirmations will be reset. Proceed?",
+                )
+              ) {
+                await projectApi.resumeProjectGeneration(projectId, true);
+                onBack(); // Go back to dashboard to see progress
+              }
+            }}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-semibold transition-all shadow-lg shadow-amber-500/20"
+          >
+            Regenerate All
+          </button>
           <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-semibold transition-all">
             Export Report
           </button>
@@ -181,16 +205,16 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
                     <div className="flex flex-col items-end">
                       <div className="flex items-center gap-2 mb-1">
                         <Zap
-                          className={`w-4 h-4 ${currentA.confidence > 0.8 ? "text-emerald-400" : "text-amber-400"}`}
+                          className={`w-4 h-4 ${currentA.confidence_score > 0.8 ? "text-emerald-400" : "text-amber-400"}`}
                         />
                         <span className="text-xs font-bold text-slate-500 uppercase">
                           Confidence
                         </span>
                       </div>
                       <span
-                        className={`text-lg font-mono font-bold ${currentA.confidence > 0.8 ? "text-emerald-400" : "text-amber-400"}`}
+                        className={`text-lg font-mono font-bold ${currentA.confidence_score > 0.8 ? "text-emerald-400" : "text-amber-400"}`}
                       >
-                        {Math.round(currentA.confidence * 100)}%
+                        {Math.round(currentA.confidence_score * 100)}%
                       </span>
                     </div>
                   )}
@@ -206,9 +230,11 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
                         <Edit3 className="w-4 h-4" />
                       </button>
                     </div>
-                    {currentA ? (
+                    {currentA &&
+                    currentA.answer_text &&
+                    currentA.answer_text.trim() !== "" ? (
                       <p className="text-slate-200 leading-relaxed italic text-lg pr-8">
-                        "{currentA.answer}"
+                        "{currentA.answer_text}"
                       </p>
                     ) : (
                       <div className="flex items-center gap-3 text-slate-500 py-4">
@@ -243,12 +269,22 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
                             {cite.document_name || "Reference Document"}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-600 bg-slate-950 px-1.5 rounded">
-                          SIMILARITY {Math.round(cite.score * 100) / 100}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-16 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-indigo-500"
+                              style={{
+                                width: `${cite.confidence * 100}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {Math.round(cite.confidence * 100)}%
+                          </span>
+                        </div>
                       </div>
                       <p className="text-sm text-slate-400 italic">
-                        "{cite.text}"
+                        "{cite.text_snippet}"
                       </p>
                       <div className="mt-3 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                         <span className="text-xs text-primary-400 font-bold flex items-center gap-1">

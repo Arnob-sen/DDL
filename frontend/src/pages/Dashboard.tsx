@@ -6,16 +6,19 @@ import {
   Activity,
   AlertTriangle,
 } from "lucide-react";
-import { projectApi } from "../services/api";
 import StatusBadge from "../components/StatusBadge";
 import type { Project } from "../types/types";
+import { projectApi } from "../services/api";
+import ActiveJobs from "../components/ActiveJobs";
 
 interface DashboardProps {
   onSelectProject: (id: string) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onSelectProject }) => {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<
+    (Project & { last_error?: string })[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     total: 0,
@@ -175,19 +178,43 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectProject }) => {
                 </button>
               </div>
 
-              {project.status === "OUTDATED" && (
-                <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-3 text-amber-400 text-sm">
+              {project.status === "FAILED" && project.last_error && (
+                <div className="mt-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-3 text-rose-400 text-xs">
                   <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                  <p>
-                    New reference documents detected. Answer consistency may be
-                    impacted.
+                  <p className="font-medium">
+                    <span className="font-bold uppercase mr-1">Error:</span>
+                    {project.last_error}
                   </p>
+                </div>
+              )}
+
+              {project.status === "OUTDATED" && (
+                <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center justify-between gap-3 text-amber-400 text-sm">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                    <p>
+                      New reference documents detected. Answer consistency may
+                      be impacted.
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      projectApi.resumeProjectGeneration(project.id, true);
+                      // Optionally refresh projects or show a toast
+                      window.location.reload();
+                    }}
+                    className="flex-shrink-0 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-md text-xs font-bold transition-all"
+                  >
+                    Regenerate Now
+                  </button>
                 </div>
               )}
             </div>
           ))}
         </div>
       )}
+      <ActiveJobs />
     </div>
   );
 };

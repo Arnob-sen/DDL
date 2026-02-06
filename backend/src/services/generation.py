@@ -71,11 +71,23 @@ class GenerationService:
         confidence = 0.5
         
         for line in lines:
-            if line.startswith("Answer:"):
-                answer_text = line.replace("Answer:", "").strip()
-            elif line.startswith("Confidence:"):
+            line = line.strip()
+            if not line: continue
+            
+            # Robust parsing for Answer
+            if line.lower().startswith("answer:"):
+                answer_text = line[len("answer:"):].strip()
+            elif "**answer:**" in line.lower():
+                 answer_text = line.lower().split("answer:**")[-1].strip()
+            
+            # Robust parsing for Confidence
+            elif "confidence:" in line.lower():
                 try:
-                    confidence = float(line.replace("Confidence:", "").strip())
+                    # Extract last float from line
+                    import re
+                    match = re.search(r"(\d+\.\d+)", line)
+                    if match:
+                        confidence = float(match.group(1))
                 except:
                     pass
 

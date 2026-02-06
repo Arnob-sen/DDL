@@ -20,17 +20,17 @@ export interface Question {
 
 export interface Citation {
   document_name: string;
-  text: string;
-  page?: number;
-  score: number;
+  text_snippet: string;
+  page_number?: number;
+  confidence: number;
 }
 
 export interface Answer {
   id: string;
   project_id: string;
   question_id: string;
-  answer: string;
-  confidence: number;
+  answer_text: string;
+  confidence_score: number;
   citations: Citation[];
 }
 

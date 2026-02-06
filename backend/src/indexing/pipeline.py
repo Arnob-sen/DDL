@@ -32,7 +32,7 @@ class IndexingPipeline:
             chunk.metadata["document_name"] = doc_name
             chunk.metadata["source_path"] = file_path
 
-        # 4. Store in Qdrant
+        # 4. Store in Qdrant in batches
         qdrant_client = storage.get_qdrant()
         if qdrant_client:
             # Ensure collection exists with correct dimensions (3072 for this preview model)
@@ -57,7 +57,14 @@ class IndexingPipeline:
                 collection_name=collection_name,
                 embedding=self.embeddings
             )
-            vector_db.add_documents(chunks)
+            
+            # Process in batches to avoid timeouts
+            batch_size = 20
+            for i in range(0, len(chunks), batch_size):
+                batch = chunks[i : i + batch_size]
+                print(f"Indexing batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1} for {doc_name}...")
+                vector_db.add_documents(batch)
+            
             print(f"Indexed {len(chunks)} chunks from {doc_name} into {collection_name}")
             return len(chunks)
         else:

@@ -8,13 +8,31 @@ from ..services.generation import generation_service
 from ..services.parser import questionnaire_parser
 from ..workers.manager import job_manager
 
+def format_api_error(e: Exception) -> str:
+    error_msg = str(e)
+    if "RESOURCE_EXHAUSTED" in error_msg:
+        return "Google API Quota Reached. Please wait a few minutes and try again."
+    elif "429" in error_msg:
+        return "Rate limit exceeded. slowing down..."
+    return error_msg
+
 async def index_document_async_task(job_id: str, file_path: str, doc_name: str):
     try:
         await job_manager.update_job(job_id, status=JobStatus.RUNNING, message="Chunking and indexing...")
-        await indexing_pipeline.index_document(file_path, doc_name)
+        chunks_count = await indexing_pipeline.index_document(file_path, doc_name)
         
         # Mark ALL_DOCS projects as OUTDATED
         db = storage.get_db()
+
+        # Record document in DB
+        await db.documents.insert_one({
+            "name": doc_name,
+            "filename": os.path.basename(file_path),
+            "status": "INDEXED",
+            "chunks_count": chunks_count,
+            "indexed_at": datetime.utcnow()
+        })
+
         await db.projects.update_many(
             {"document_scope": "ALL_DOCS", "status": ProjectStatus.COMPLETED},
             {"$set": {"status": ProjectStatus.OUTDATED, "updated_at": datetime.utcnow()}}
@@ -24,7 +42,7 @@ async def index_document_async_task(job_id: str, file_path: str, doc_name: str):
     except Exception as e:
         await job_manager.update_job(job_id, status=JobStatus.FAILED, error=str(e))
 
-async def create_project_async_task(job_id: str, name: str, questionnaire_path: str, scope: str, project_id: Optional[str] = None):
+async def create_project_async_task(job_id: str, name: str, questionnaire_path: str, scope: str, project_id: Optional[str] = None, force_regenerate: bool = False):
     try:
         db = storage.get_db()
         
@@ -41,14 +59,16 @@ async def create_project_async_task(job_id: str, name: str, questionnaire_path: 
                 await db.questions.insert_many([q.dict() for q in questions])
         else:
             await job_manager.update_job(job_id, status=JobStatus.RUNNING, message="Resuming project generation...")
+            if force_regenerate:
+                await db.projects.update_one({"id": project_id}, {"$set": {"status": ProjectStatus.READY}})
 
         # 3. Trigger Generation (Internal helper)
-        await generate_answers_for_project(job_id, project_id)
+        await generate_answers_for_project(job_id, project_id, force_regenerate)
         
     except Exception as e:
         await job_manager.update_job(job_id, status=JobStatus.FAILED, error=str(e))
 
-async def generate_answers_for_project(job_id: str, project_id: str):
+async def generate_answers_for_project(job_id: str, project_id: str, force_regenerate: bool = False):
     db = storage.get_db()
     
     # Load Questions
@@ -58,16 +78,30 @@ async def generate_answers_for_project(job_id: str, project_id: str):
     project = await db.projects.find_one({"id": project_id})
     scope = project.get("document_scope", "ALL_DOCS")
 
-    # Trigger Answer Generation (Skips existing)
+    # If force, clear existing answers first
+    if force_regenerate:
+        await job_manager.update_job(job_id, message="Clearing previous answers for fresh regeneration...")
+        await db.answers.delete_many({"project_id": project_id})
+        # Reset questions status if needed, though generate_answer will overwrite anyway
+        await db.questions.update_many({"project_id": project_id}, {"$set": {"status": "PENDING"}})
+
+    # Trigger Answer Generation
     for i, question in enumerate(questions):
-        # Check if answer already exists
-        existing_answer = await db.answers.find_one({"question_id": question["id"]})
-        if existing_answer:
-            continue
+        # Check if answer already exists (if not forced)
+        if not force_regenerate:
+            existing_answer = await db.answers.find_one({"question_id": question["id"]})
+            if existing_answer:
+                continue
 
         await job_manager.update_job(job_id, progress=0.1 + (0.9 * (i/len(questions))), message=f"Generating answer {i+1}/{len(questions)}...")
-        answer = await generation_service.generate_answer(project_id, question["id"], question["text"], collection_name=scope)
-        await db.answers.insert_one(answer.dict())
+        try:
+            answer = await generation_service.generate_answer(project_id, question["id"], question["text"], collection_name=scope)
+            await db.answers.insert_one(answer.dict())
+            # Update question status to reflect it's been processed
+            await db.questions.update_one({"id": question["id"]}, {"$set": {"status": "AI_GENERATED"}})
+        except Exception as e:
+            print(f"Error generating answer for {question['id']}: {e}")
+            continue
         
     await db.projects.update_one({"id": project_id}, {"$set": {"status": ProjectStatus.COMPLETED, "updated_at": datetime.utcnow()}})
     await job_manager.update_job(job_id, status=JobStatus.COMPLETED, message="Project processing complete.", result={"project_id": project_id})

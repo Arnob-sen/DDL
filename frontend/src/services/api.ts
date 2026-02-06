@@ -23,7 +23,12 @@ export const projectApi = {
 
   listProjects: () => api.get("/projects"),
 
+  resumeProjectGeneration: (projectId: string, force: boolean = false) =>
+    api.post(`/resume-project-generation/${projectId}?force=${force}`),
+
   listDocuments: () => api.get("/documents"),
+
+  listFiles: () => api.get("/list-files"),
 
   // Answer Generation
   generateSingleAnswer: (projectId: string, questionId: string) =>
@@ -35,12 +40,13 @@ export const projectApi = {
   generateAllAnswers: (projectId: string) =>
     api.post("/generate-all-answers", { project_id: projectId }),
 
-  updateAnswer: (projectId: string, questionId: string, answer: string) =>
-    api.post("/update-answer", {
-      project_id: projectId,
-      question_id: questionId,
-      answer: answer,
-    }),
+  updateAnswer: (data: {
+    answer_id?: string;
+    project_id?: string;
+    question_id?: string;
+    answer_text?: string;
+    status?: string;
+  }) => api.post("/update-answer", data),
 
   // Document Indexing
   indexDocument: (data: { file_path: string; doc_name: string }) =>
@@ -48,6 +54,8 @@ export const projectApi = {
 
   // Job Tracking
   getJobStatus: (jobId: string) => api.get(`/get-request-status/${jobId}`),
+
+  listActiveJobs: () => api.get("/jobs/active"),
 
   getHealth: () => api.get("/health"),
 };
