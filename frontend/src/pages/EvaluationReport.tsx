@@ -1,5 +1,5 @@
 import React from "react";
-import { Target, User, Bot, Percent, Scale, TrendingUp } from "lucide-react";
+import { User, Bot, Percent, Scale } from "lucide-react";
 
 const EvaluationReport: React.FC = () => {
   const evaluations = [

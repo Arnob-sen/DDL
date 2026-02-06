@@ -1,21 +1,34 @@
 import React, { useState } from "react";
-import { Layout, Database, FileText, BarChart3, Settings } from "lucide-react";
+import {
+  Layout,
+  Database,
+  FileText,
+  BarChart3,
+  Settings,
+  Activity,
+} from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Indexing from "./pages/Indexing";
 import ProjectDetail from "./pages/ProjectDetail";
 import EvaluationReport from "./pages/EvaluationReport";
+import RequestStatus from "./pages/RequestStatus";
+
+type TabId = "dashboard" | "indexing" | "evaluation" | "jobs";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<
-    "dashboard" | "indexing" | "evaluation"
-  >("dashboard");
+  const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   );
 
   const renderContent = () => {
     if (selectedProjectId) {
-      return <ProjectDetail onBack={() => setSelectedProjectId(null)} />;
+      return (
+        <ProjectDetail
+          projectId={selectedProjectId}
+          onBack={() => setSelectedProjectId(null)}
+        />
+      );
     }
 
     switch (activeTab) {
@@ -25,6 +38,8 @@ const App: React.FC = () => {
         return <Indexing />;
       case "evaluation":
         return <EvaluationReport />;
+      case "jobs":
+        return <RequestStatus />;
       default:
         return <Dashboard onSelectProject={setSelectedProjectId} />;
     }
@@ -48,11 +63,12 @@ const App: React.FC = () => {
             { id: "dashboard", label: "Dashboard", icon: Database },
             { id: "indexing", label: "Document Index", icon: FileText },
             { id: "evaluation", label: "Evaluation", icon: BarChart3 },
+            { id: "jobs", label: "Jobs", icon: Activity },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => {
-                setActiveTab(tab.id as any);
+                setActiveTab(tab.id as TabId);
                 setSelectedProjectId(null);
               }}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${

@@ -53,11 +53,18 @@ async def generate_all_answers(background_tasks: BackgroundTasks, payload: dict)
 @router.post("/update-answer")
 async def update_answer(payload: dict):
     answer_id = payload.get("answer_id")
-    if not answer_id:
-        raise HTTPException(status_code=400, detail="answer_id is required")
-        
+    project_id = payload.get("project_id")
+    question_id = payload.get("question_id")
+    
     db = storage.get_db()
-    answer = await db.answers.find_one({"id": answer_id})
+    
+    if answer_id:
+        answer = await db.answers.find_one({"id": answer_id})
+    elif project_id and question_id:
+        answer = await db.answers.find_one({"project_id": project_id, "question_id": question_id})
+    else:
+        raise HTTPException(status_code=400, detail="answer_id or (project_id and question_id) are required")
+        
     if not answer:
         raise HTTPException(status_code=404, detail="Answer not found")
         
@@ -65,13 +72,16 @@ async def update_answer(payload: dict):
         "updated_at": datetime.utcnow()
     }
     
-    if "answer_text" in payload:
-        updates["answer_text"] = payload["answer_text"]
-        updates["manual_overridden_text"] = payload["answer_text"]
+    # Handle both payload keys for flexibility
+    new_text = payload.get("answer_text") or payload.get("answer")
+    
+    if new_text:
+        updates["answer_text"] = new_text
+        updates["manual_overridden_text"] = new_text
         updates["status"] = AnswerStatus.MANUAL_UPDATED
         
     if "status" in payload:
         updates["status"] = AnswerStatus(payload["status"])
         
-    await db.answers.update_one({"id": answer_id}, {"$set": updates})
+    await db.answers.update_one({"_id": answer["_id"]}, {"$set": updates})
     return {"message": "Answer updated successfully"}

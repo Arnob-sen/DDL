@@ -48,6 +48,12 @@ async def get_project_info(project_id: str):
         "answers": answers
     }
 
+@router.get("/projects")
+async def list_projects():
+    db = storage.get_db()
+    projects = await db.projects.find({}, {"_id": 0}).sort("updated_at", -1).to_list(100)
+    return projects
+
 @router.get("/get-project-status/{project_id}")
 async def get_project_status(project_id: str):
     db = storage.get_db()
