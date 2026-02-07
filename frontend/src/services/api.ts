@@ -57,10 +57,8 @@ export const projectApi = {
 
   listActiveJobs: () => api.get("/jobs/active"),
 
-  evaluateProject: (
-    projectId: string,
-    groundTruthData: Record<string, string>,
-  ) => api.post(`/evaluate-project/${projectId}`, groundTruthData),
+  evaluateProject: (projectId: string, groundTruth: Record<string, string>) =>
+    api.post(`/evaluate-project/${projectId}`, groundTruth),
 
   getHealth: () => api.get("/health"),
 };
