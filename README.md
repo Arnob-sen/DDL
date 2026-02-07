@@ -154,7 +154,7 @@ In building this skeleton, I prioritized architectural clarity and extensibility
 - **Parsing Strategy (Heuristic vs. LayoutLM):**
   - **Decision:** I used a regex/heuristic-based parser (`parse.py`) to extract questions from the PDF.
   - **Tradeoff:** This is fast and works for standard "1.1 Question" formats but is brittle for complex layouts (tables/multicolumn).
-  - **Future:** Replace with a layout-aware model (Microsoft LayoutLM) or a Vision-Language Model (Gemini 1.5 Pro) for robust parsing.
+  - **Future:** Replace with a layout-aware model (Microsoft LayoutLM) or a Vision-Language Model (Gemini 2.5 Pro) for robust parsing.
 
 - **Async Handling (BackgroundTasks vs. Celery):**
   - **Decision:** Utilized FastAPI's built-in `BackgroundTasks`.
