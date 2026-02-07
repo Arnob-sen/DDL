@@ -8,6 +8,8 @@ export interface Project {
   question_count?: number;
   answered_count?: number;
   document_scope: string;
+  average_evaluation_score?: number;
+  last_evaluated_at?: string;
 }
 
 export interface Question {
@@ -32,6 +34,8 @@ export interface Answer {
   answer_text: string;
   confidence_score: number;
   citations: Citation[];
+  evaluation_score?: number;
+  ground_truth?: string;
 }
 
 export interface Document {

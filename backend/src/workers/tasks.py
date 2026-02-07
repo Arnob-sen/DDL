@@ -51,6 +51,8 @@ async def create_project_async_task(job_id: str, name: str, questionnaire_path: 
             project = Project(name=name, questionnaire_filename=os.path.basename(questionnaire_path), document_scope=scope)
             await db.projects.insert_one(project.dict())
             project_id = project.id
+            # Record project_id in job early for recovery
+            await job_manager.update_job(job_id, result={"project_id": project_id})
             
             # 2. Parse Questions (Only if new project)
             await job_manager.update_job(job_id, status=JobStatus.RUNNING, message="Parsing questionnaire...")
@@ -58,7 +60,7 @@ async def create_project_async_task(job_id: str, name: str, questionnaire_path: 
             if questions:
                 await db.questions.insert_many([q.dict() for q in questions])
         else:
-            await job_manager.update_job(job_id, status=JobStatus.RUNNING, message="Resuming project generation...")
+            await job_manager.update_job(job_id, status=JobStatus.RUNNING, message="Resuming project generation...", result={"project_id": project_id})
             if force_regenerate:
                 await db.projects.update_one({"id": project_id}, {"$set": {"status": ProjectStatus.READY}})
 
@@ -67,6 +69,10 @@ async def create_project_async_task(job_id: str, name: str, questionnaire_path: 
         
     except Exception as e:
         await job_manager.update_job(job_id, status=JobStatus.FAILED, error=str(e))
+        # Update project status to FAILED so UI knows it stopped
+        if project_id:
+            db = storage.get_db()
+            await db.projects.update_one({"id": project_id}, {"$set": {"status": ProjectStatus.FAILED, "updated_at": datetime.utcnow()}})
 
 async def generate_answers_for_project(job_id: str, project_id: str, force_regenerate: bool = False):
     db = storage.get_db()

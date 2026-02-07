@@ -27,9 +27,12 @@ async def list_documents():
 
 @router.get("/list-files")
 async def list_files():
-    # List PDFs in the data directory
-    data_dir = "/media/arnob/New Volume/Dev/DDL/data"
+    # Use relative path or env var
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) # Go up from src/api/indexing.py to project root
+    data_dir = os.path.join(base_dir, "data")
+    
     if not os.path.exists(data_dir):
+        # Fallback to create it or just return empty
         return []
     
     files = glob.glob(os.path.join(data_dir, "*.pdf"))

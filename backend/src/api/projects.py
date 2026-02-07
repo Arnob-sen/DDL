@@ -127,4 +127,45 @@ async def update_project_async(background_tasks: BackgroundTasks, payload: Updat
                 background_tasks.add_task(create_project_async_task, job_id, project["name"], "", payload.scope, project_id)
                 return {"job_id": job_id, "message": "Project updated and regeneration started"}
 
-    return {"message": "Project updated successfully"}
+from ..services.evaluation import evaluation_service
+
+@router.post("/evaluate-project/{project_id}")
+async def evaluate_project(project_id: str, ground_truth_data: dict):
+    # ground_truth_data could be {"question_id_1": "Real Answer", "question_id_2": ...}
+    db = storage.get_db()
+    
+    # Verify project exists
+    project = await db.projects.find_one({"id": project_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    answers = await db.answers.find({"project_id": project_id}).to_list(1000)
+    
+    total_score = 0
+    evaluated_count = 0
+    
+    for answer in answers:
+        q_id = answer["question_id"]
+        if q_id in ground_truth_data:
+            truth = ground_truth_data[q_id]
+            ai_text = answer.get("answer_text", "")
+            
+            score = await evaluation_service.evaluate_answer(ai_text, truth)
+            
+            # Update answer with evaluation score
+            await db.answers.update_one(
+                {"_id": answer["_id"]}, 
+                {"$set": {"evaluation_score": score, "ground_truth": truth}}
+            )
+            total_score += score
+            evaluated_count += 1
+            
+    avg_score = total_score / evaluated_count if evaluated_count > 0 else 0
+    
+    # Update project with average score
+    await db.projects.update_one(
+        {"id": project_id},
+        {"$set": {"average_evaluation_score": avg_score, "last_evaluated_at": datetime.utcnow()}}
+    )
+    
+    return {"project_id": project_id, "average_similarity_score": avg_score, "evaluated_count": evaluated_count}

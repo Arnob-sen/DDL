@@ -28,6 +28,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
   } | null>(null);
   const [selectedQuestion, setSelectedQuestion] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState("");
 
   useEffect(() => {
     const fetchProjectDetails = async () => {
@@ -44,9 +46,22 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
     fetchProjectDetails();
   }, [projectId]);
 
+  const currentQ = projectData?.questions[selectedQuestion] || null;
+  const currentA = currentQ
+    ? projectData?.answers.find((a) => a.question_id === currentQ.id)
+    : null;
+
+  useEffect(() => {
+    if (currentA) {
+      setEditText(currentA.answer_text || "");
+      setIsEditing(false);
+    }
+  }, [currentA]);
+
   const handleUpdateAnswer = async (
     questionId: string,
-    status: "CONFIRMED" | "REJECTED",
+    status: "CONFIRMED" | "REJECTED" | "MANUAL_UPDATED",
+    newText?: string,
   ) => {
     if (!projectData) return;
 
@@ -59,7 +74,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
         project_id: projectId,
         question_id: questionId,
         status: status,
+        answer_text: newText,
       });
+
+      setIsEditing(false);
 
       // Update local state
       const updatedQuestions = projectData.questions.map((q) =>
@@ -101,11 +119,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
     );
   }
 
-  const { project, questions, answers } = projectData;
-  const currentQ = questions[selectedQuestion] || null;
-  const currentA = currentQ
-    ? answers.find((a) => a.question_id === currentQ.id)
-    : null;
+  const { project, questions } = projectData;
+  // currentQ and currentA are now declared at the top of the component to be used in useEffect
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
@@ -131,6 +146,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
           </div>
         </div>
         <div className="flex gap-3">
+          {(project.status === "FAILED" || project.status === "PROCESSING") && (
+            <button
+              onClick={async () => {
+                await projectApi.resumeProjectGeneration(projectId, false);
+                onBack(); // Go back to dashboard to see progress
+              }}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+            >
+              <Activity className="w-4 h-4" />
+              Resume Generation
+            </button>
+          )}
           <button
             onClick={async () => {
               if (
@@ -222,17 +249,40 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
 
                 <div className="space-y-4">
                   <div className="p-5 bg-slate-950/80 border border-slate-800 rounded-xl relative group">
-                    <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        className="p-2 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-300"
-                        title="Manual Edit"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
+                    <div className="absolute top-4 right-4 flex gap-2">
+                      {isEditing ? (
+                        <button
+                          onClick={() =>
+                            handleUpdateAnswer(
+                              currentQ.id,
+                              "MANUAL_UPDATED",
+                              editText,
+                            )
+                          }
+                          className="p-2 bg-emerald-600 hover:bg-emerald-500 rounded-md text-white shadow-lg"
+                          title="Save Changes"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setIsEditing(true)}
+                          className="p-2 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Manual Edit"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    {currentA &&
-                    currentA.answer_text &&
-                    currentA.answer_text.trim() !== "" ? (
+                    {isEditing ? (
+                      <textarea
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        className="w-full bg-slate-900 text-slate-200 border border-slate-700 rounded-lg p-3 focus:outline-none focus:border-primary-500 min-h-[150px]"
+                      />
+                    ) : currentA &&
+                      currentA.answer_text &&
+                      currentA.answer_text.trim() !== "" ? (
                       <p className="text-slate-200 leading-relaxed italic text-lg pr-8">
                         "{currentA.answer_text}"
                       </p>

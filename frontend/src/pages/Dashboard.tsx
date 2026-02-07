@@ -10,6 +10,7 @@ import StatusBadge from "../components/StatusBadge";
 import type { Project } from "../types/types";
 import { projectApi } from "../services/api";
 import ActiveJobs from "../components/ActiveJobs";
+import CreateProjectModal from "../components/CreateProjectModal";
 
 interface DashboardProps {
   onSelectProject: (id: string) => void;
@@ -20,6 +21,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectProject }) => {
     (Project & { last_error?: string })[]
   >([]);
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     completed: 0,
@@ -66,7 +68,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectProject }) => {
             Manage and track your questionnaire automations
           </p>
         </div>
-        <button className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-primary-500/20 active:scale-95">
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-primary-500/20 active:scale-95"
+        >
           <Plus className="w-5 h-5" />
           Create Project
         </button>
@@ -178,13 +183,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectProject }) => {
                 </button>
               </div>
 
-              {project.status === "FAILED" && project.last_error && (
-                <div className="mt-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-3 text-rose-400 text-xs">
-                  <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                  <p className="font-medium">
-                    <span className="font-bold uppercase mr-1">Error:</span>
-                    {project.last_error}
-                  </p>
+              {(project.status === "FAILED" ||
+                project.status === "PROCESSING") && (
+                <div className="mt-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg space-y-3">
+                  {project.status === "FAILED" && project.last_error && (
+                    <div className="flex items-start gap-3 text-rose-400 text-xs">
+                      <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                      <p className="font-medium">
+                        <span className="font-bold uppercase mr-1">Error:</span>
+                        {project.last_error}
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      projectApi.resumeProjectGeneration(project.id, false);
+                      window.location.reload();
+                    }}
+                    className="w-full py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2"
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    Resume Generation
+                  </button>
                 </div>
               )}
 
@@ -215,6 +236,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectProject }) => {
         </div>
       )}
       <ActiveJobs />
+      <CreateProjectModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={() => {
+          window.location.reload();
+        }}
+      />
     </div>
   );
 };
