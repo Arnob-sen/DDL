@@ -80,28 +80,28 @@ The system is designed as a decoupled full-stack application.
 
 ```mermaid
 graph TD
-    subgraph "Ingestion Flow"
-        PDF[Reference PDF] -->|Parse & Chunk| Chunks
-        Chunks -->|Embed (Gemini)| Embeddings
+    subgraph Ingestion [Ingestion Flow]
+        PDF[Reference PDF] -->|Parse and Chunk| Chunks
+        Chunks -->|Embed via Gemini| Embeddings
         Embeddings -->|Store| Qdrant[(Qdrant Vector DB)]
     end
 
-    subgraph "Project Creation Flow"
+    subgraph Creation [Project Creation Flow]
         BlankPDF[Blank Questionnaire PDF] -->|Regex Parser| Questions
-        Questions -->|Store| MongoQuestions[(MongoDB Questions)]
+        Questions -->|Store| MongoQ[(MongoDB Questions)]
     end
 
-    subgraph "Answer Generation Flow (Async)"
-        Job[Background Job] -->|Fetch Question| MongoQuestions
+    subgraph Generation [Answer Generation Flow]
+        Job[Background Job] -->|Fetch Question| MongoQ
         Job -->|Retrieve Context| Qdrant
-        Qdrant -->|Context Chunks| LLM[Gemini 1.5 Pro]
-        LLM -->|Generate Answer + Citation| Answer
-        Answer -->|Store| MongoAnswers[(MongoDB Answers)]
+        Qdrant -->|Context Chunks| LLM[Gemini API]
+        LLM -->|Generate Answer with Citation| Answer
+        Answer -->|Store| MongoA[(MongoDB Answers)]
     end
 
-    subgraph "Review Flow"
-        User[User] -->|Review/Edit| UI[Frontend UI]
-        UI -->|Update Status| MongoAnswers
+    subgraph Review [Review Flow]
+        User[User] -->|Review and Edit| UI[Frontend UI]
+        UI -->|Update Status| MongoA
     end
 ```
 
